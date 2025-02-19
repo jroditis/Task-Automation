@@ -1,0 +1,93 @@
+/**
+ * Sends reminders based on the frequency specified in the spreadsheet.
+ */
+function sendReminders() {
+  // Get the spreadsheet and sheet.
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getActiveSheet(); // Assumes data is on the active sheet. 
+                                  // Change if needed: ss.getSheetByName("YourSheetName");
+
+  // Get the data (assuming headers are in row 1).
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0];
+
+  // Find the columns for 'Task', 'Link', 'Frequency', and 'Last Reminded Date'.
+  var taskCol = headers.indexOf("Task");
+  var linkCol = headers.indexOf("Link");
+  var freqCol = headers.indexOf("Frequency");
+  var lastRemindedCol = headers.indexOf("Last Reminded"); // Assumes this column exists
+
+  // If "Last Reminded" column doesn't exist, add it.
+  if (lastRemindedCol === -1) {
+    lastRemindedCol = headers.length;
+    sheet.insertColumnAfter(sheet.getLastColumn());
+    sheet.getRange(1, lastRemindedCol + 1).setValue("Last Reminded");
+    headers.push("Last Reminded"); // Update headers array
+  }
+
+  // Iterate through the rows (starting from row 2 to skip headers).
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    var task = row[taskCol];
+    var link = row[linkCol];
+    var frequency = row[freqCol];
+    var lastReminded = row[lastRemindedCol];
+
+    // Check if the task has a frequency defined.
+    if (frequency) {
+      var now = new Date();
+      var timeSinceLastReminded = (lastReminded) ? (now.getTime() - new Date(lastReminded).getTime()) : Infinity;
+      var frequencyMs = getFrequencyMs(frequency); // Helper function (see below)
+
+      // Check if it's time to send a reminder.
+      if (timeSinceLastReminded >= frequencyMs) {
+        // Send email notification.
+        sendEmail(task, link);
+
+        // Update the last reminded date in the spreadsheet.
+        sheet.getRange(i + 1, lastRemindedCol + 1).setValue(now);
+        Logger.log("Reminder sent and date updated for task: " + task);
+      } else {
+        Logger.log("No reminder needed for task: " + task + ". Last reminded: " + lastReminded);
+      }
+    } else {
+      Logger.log("No frequency defined for task: " + task + ". Skipping.");
+    }
+  }
+}
+
+
+/**
+ * Converts frequency string (e.g., "Daily", "Weekly") to milliseconds.
+ */
+function getFrequencyMs(frequency) {
+  frequency = frequency.toLowerCase();
+  switch (frequency) {
+    case "daily":    return 24 * 60 * 60 * 1000; // 24 hours
+    case "weekly":   return 7 * 24 * 60 * 60 * 1000; // 7 days
+    case "monthly":  return 30 * 24 * 60 * 60 * 1000; // Approximation (30 days)
+    case "quarterly": return 90 * 24 * 60 * 60 * 1000; // Approximation (90 days)
+    case "yearly":   return 365 * 24 * 60 * 60 * 1000; // 365 days
+    default:         return Infinity; // Treat as "never" if invalid frequency
+  }
+}
+
+
+/**
+ * Sends an email notification.
+ */
+function sendEmail(task, link) {
+  var subject = "Reminder: " + task;
+  var body = "This is a reminder for task: " + task + ".\n\nLink: " + link;
+  
+  // Get the email address of the script's owner.
+  var recipient = Session.getActiveUser().getEmail();
+
+  MailApp.sendEmail({
+    to: recipient,
+    subject: subject,
+    body: body
+  });
+
+  Logger.log("Email sent for task: " + task);
+}
